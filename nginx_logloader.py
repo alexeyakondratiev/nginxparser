@@ -1,11 +1,14 @@
+'''
+Для работы скрипта, нужно определить переменные среды:
+LISTENER=oralistener-test.local
+SERVICE=test_db
+USER=test
+PASSWORD=test
+'''
+
 import oracledb
 from datetime import datetime
 import os
-
-
-
-def connectOracle(sListener,sService, sUser, sPass):
-    return oracledb.connect(host=sListener, port=521, service_name=sService, user=sUser, passord=sPass)
 
 '''
 1 - remote_addr
@@ -16,7 +19,9 @@ def connectOracle(sListener,sService, sUser, sPass):
 6 - body_bytes_sent
 7 - referer
 8 - user_agent
-9 - http_x_forwarded_for (необязательно)'''
+9 - http_x_forwarded_for'''
+
+sLogFile = os.getenv('NGINXLOG')
 
 class loader():
     def __init__(self, sFileName, prefix = 'nginx'):
@@ -84,8 +89,8 @@ class loader():
 
     def ParseNginx(self):
         '''
-        Превратим плоский файл в словарь
-        :return:
+        Превратим плоский файл в список словарей
+        :return: [{}]
         '''
         dRequest = {}
         lLog = []
@@ -231,8 +236,9 @@ class loader():
 
 '''
 Укажем, где лежит лог
+(берем из переменной окружения 'NGINXLOG')
 '''
-d = loader('C:\\TASKS\\nginx.log')
+d = loader(sLogFile)
 '''
 создадим таблицу.
 Если уже есть - то просто вернется исключение
@@ -264,4 +270,5 @@ if res:
         print(f'загружено {res.get("rows")}')
     else:
         print(f'произошла ошибка {ERR}')
+
 
