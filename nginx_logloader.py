@@ -260,6 +260,7 @@ select to_char(t.time_local,'dd.mm.rrrr hh24:mi'), count(1) from NGINXLOGS t gro
 --запросы с кодом ответа не 200
 select t.statuscode, t.* from NGINXLOGS t where t.statuscode !=200 
 select t.statuscode, t.remote_addr, count(1) from NGINXLOGS t where t.statuscode !=200 group by t.statuscode, t.remote_addr order by 3 desc
+--На самом деле не знаю, почему, я сразу не подумал про загрузить все в базу и там уже делать с логом все, что угодно
 '''
 res = d.loadToDb(log)
 
