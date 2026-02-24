@@ -1,0 +1,139 @@
+import oracledb
+from datetime import datetime
+import os
+
+def connectOracle(sListener,sService, sUser, sPass):
+    return oracledb.connect(host=sListener, port=521, service_name=sService, user=sUser, passord=sPass)
+
+'''
+1 - remote_addr
+2 - remote_user \ - \
+3 - time_local
+4 - request (метод, URL, протокол)
+5 - status
+6 - body_bytes_sent
+7 - referer
+8 - user_agent
+9 - http_x_forwarded_for (необязательно)'''
+
+class loader():
+    def __init__(self, sFileName, prefix = 'nginx'):
+        self.filename = sFileName
+        self.prefix = prefix
+
+
+    def __checkaddr(self, sAddr):
+        try:
+            addr = sAddr.split('.')
+            return ''.join([f"{str(int(r))}." for r in addr])[:-1]
+
+        except ValueError:
+            return None
+
+    def __formatdate(self, sDate):
+        try:
+            return datetime.strptime(sDate, "%d/%b/%Y:%H:%M:%S")
+        except ValueError:
+            return None
+
+    def __getstatus(self, lValues):
+        try:
+            return lValues[2].strip().split(' ')[0]
+        except Exception as e:
+            return None
+
+    def __getbytes(self, lValues):
+        try:
+            return lValues.strip().split(' ')[1]
+        except Exception as e:
+            return None
+
+    def __getrefer(self, lValues):
+        try:
+            return lValues[3]
+        except Exception as e:
+            return None
+
+    def __getuseragent(self, lValues):
+        try:
+            return lValues[5]
+        except Exception as e:
+            return None
+
+    def __getforwarded(self, lValues):
+        try:
+            return lValues[7]
+        except Exception as e:
+            return None
+
+    def __getremoteuser(self, lValues):
+        try:
+            return ''.join([s for s in (lValues[2], lValues[3])])
+        except Exception as e:
+            return None
+
+
+    def ParseNginx(self):
+        '''
+        Превратим плоский файл в словарь
+        :return:
+        '''
+        dRequest = {}
+        lLog = []
+        try:
+            file = self.filename
+            lines = open(file, 'r')
+            for line in lines:
+                if line.startswith(self.prefix):
+                    val = line.split('|')[1:]
+                    #print(val)
+                    sRemoteAddr = self.__checkaddr(val[0].strip().split(' ')[0])
+                    #print(remote_addr)
+                    if sRemoteAddr:
+                        sRemoteUser = self.__getremoteuser(val[0].split(' '))
+                        #[24/Feb/2026:00:53:34 +0000]
+                        pos = val[0].find('[')
+                        time_local = self.__formatdate(val[0][pos+1:pos+21])
+                        #print(date)
+                        pos = val[0].find(']')
+                        info = val[0][pos+1:-1].strip()
+                        if info.startswith('"POST') or info.startswith('"GET'):
+                            separated = info.split('"')
+                            sRequest = separated[1].split(' ')
+
+                            if sRequest:
+                                dRequest.update({'method':sRequest[0], 'url':sRequest[1], 'protocol':sRequest[2]})
+                                #print(dRequest)
+                            sStatus = self.__getstatus(separated)
+                            sBytes = self.__getbytes(separated)
+                            sRefer = self.__getrefer(separated)
+                            sUser_agent = self.__getuseragent(separated)
+                            sHttp_x_forwarded_for = self.__getforwarded(separated)
+                            lLog.append({'remote_addr':sRemoteAddr,
+                                         'remote_user':sRemoteUser,
+                                         'time_local':time_local,
+                                         'request':dRequest,
+                                         'status':sStatus,
+                                         'body_bytes_sent':sBytes,
+                                         'referer':sRefer,
+                                         'user_agent':sUser_agent,
+                                         'http_x_forwarded_for':sHttp_x_forwarded_for,})
+
+            return  lLog
+
+
+
+        except Exception as e:
+            print(f'Exception {e}')
+            return None
+
+
+d = loader('C:\\TASKS\\nginx.log')
+log = d.ParseNginx()
+
+if log:
+    for line in log:
+        #print(line)
+        #Вставим в базу:
+        # Париться не будем, просто построчно вставим без изысков
+        sSql =  '''insert into'''
