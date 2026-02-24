@@ -2,6 +2,8 @@ import oracledb
 from datetime import datetime
 import os
 
+
+
 def connectOracle(sListener,sService, sUser, sPass):
     return oracledb.connect(host=sListener, port=521, service_name=sService, user=sUser, passord=sPass)
 
@@ -20,6 +22,10 @@ class loader():
     def __init__(self, sFileName, prefix = 'nginx'):
         self.filename = sFileName
         self.prefix = prefix
+        self.sHostName = os.getenv('LISTENER')
+        self.sService = os.getenv('SERVICE')
+        self.sUserName = os.getenv('USER')
+        self.sUserPass = os.getenv('PASSWORD')
 
 
     def __checkaddr(self, sAddr):
@@ -71,6 +77,9 @@ class loader():
             return ''.join([s for s in (lValues[2], lValues[3])])
         except Exception as e:
             return None
+
+    def __connectOracle(self):
+        return oracledb.connect(host=self.sHostName, port=1521, service_name=self.sService, user=self.sUserName, password=self.sUserPass)
 
 
     def ParseNginx(self):
@@ -128,12 +137,80 @@ class loader():
             return None
 
 
+    def loadToDb(self, lLog):
+        resulr = {'ERR':None, 'rows':0}
+        data=[]
+        rows = 0
+        sSql = '''INSERT INTO nginxlogs (
+                                        remote_addr,
+                                        remote_user,
+                                        time_local,
+                                        request_method,
+                                        request_url,
+                                        request_protocol,
+                                        statuscode,
+                                        body_bytes_sent,
+                                        referer,
+                                        user_agent,
+                                        http_x_forwarded_for
+                                    ) VALUES (
+                                        :remote_addr,
+                                        :remote_user,
+                                        :time_local,
+                                        :request_method,
+                                        :request_url,
+                                        :request_protocol,
+                                        :statuscode,
+                                        :body_bytes_sent,
+                                        :referer,
+                                        :user_agent,
+                                        :http_x_forwarded_for
+                                    )'''
+        try:
+            connection = self.__connectOracle()
+            cursor = connection.cursor()
+            cursor.arraysize = 1000
+            for line in lLog:
+                data.append([line.get('remote_addr'),
+                            line.get('remote_user'),
+                            line.get('time_local'),
+                            line.get('request').get('method'),
+                            line.get('request').get('url'),
+                            line.get('request').get('protocol'),
+                            int(line.get('statuscode')) if line.get('statuscode') else None,
+                            int(line.get('body_bytes_sent')) if line.get('body_bytes_sent') else None,
+                            line.get('referer'),
+                            line.get('user_agent'),
+                            line.get('http_x_forwarded_for')])
+
+            cursor.prepare(sSql)
+            cursor.executemany(None, data)
+            rows = cursor.rowcount
+            cursor.execute('commit')
+            resulr['rows'] = rows
+            return resulr
+
+        except Exception as e:
+            resulr.update({'ERR':e})
+            print(f'Exception {e}')
+            return resulr
+        finally:
+            if cursor:
+                cursor.close()
+
+            if connection:
+                connection.close()
+
+
+
 d = loader('C:\\TASKS\\nginx.log')
 log = d.ParseNginx()
+res = d.loadToDb(log)
 
-if log:
-    for line in log:
-        #print(line)
-        #Вставим в базу:
-        # Париться не будем, просто построчно вставим без изысков
-        sSql =  '''insert into'''
+if res:
+    ERR = res.get('ERR', None)
+    if not ERR:
+        print(f'загружено {res.get("rows")}')
+    else:
+        print(f'произошла ошибка {ERR}')
+
